@@ -10,13 +10,19 @@ export default async function EquipePage() {
   try {
     teamId = await resolveDashboardTeamId(session, null);
   } catch (err) {
-    // A manager who was reassigned away from their team (see the "Employés"
-    // admin screen) has no team to show a dashboard for — a real, reachable
-    // state now that reassignment exists, not just a defensive fallback.
+    // Two distinct empty states, both real/reachable (not just defensive):
+    // a manager reassigned away from their team (see "Employés"), or — for
+    // a brand-new org — an admin before any team exists at all. The admin
+    // can fix the second one themselves; a manager can't, so only that case
+    // points at HR.
     if (err instanceof ApiError) {
+      const hint =
+        session.user.role === "admin"
+          ? "Crée ta première équipe depuis l'écran « Employés »."
+          : "Contacte les RH pour qu'on te réassigne une équipe.";
       return (
         <div className="rounded-2xl border border-dashed border-dottedLine px-6 py-10 text-center text-muted">
-          {err.message} Contacte les RH pour qu&apos;on te réassigne une équipe.
+          {err.message} {hint}
         </div>
       );
     }
