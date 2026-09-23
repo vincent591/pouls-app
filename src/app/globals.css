@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-page text-ink font-body antialiased;
+  }
+  a {
+    color: oklch(0.5 0.1 155);
+  }
+  a:hover {
+    color: oklch(0.4 0.1 155);
+  }
+  textarea,
+  input,
+  select,
+  button {
+    font-family: inherit;
+  }
+}

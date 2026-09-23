@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pouls
+      POSTGRES_PASSWORD: pouls
+      POSTGRES_DB: pouls
+    ports:
+      - "5432:5432"
+    volumes:
+      - pouls-db:/var/lib/postgresql/data
+
+volumes:
+  pouls-db:

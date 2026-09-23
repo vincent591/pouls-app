@@ -1,0 +1,205 @@
+// Data model per design_handoff_pouls/README.md ("Data model (proposé)").
+// See src/lib/access.ts and src/lib/aggregate.ts for how the anonymity
+// threshold (k=5) and role scoping are enforced on top of this schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  employee
+  manager
+  admin
+}
+
+enum Pillar {
+  bienetre
+  engagement
+  performance
+}
+
+enum QuestionType {
+  scale
+  choice
+  text
+}
+
+enum AlertKind {
+  drop
+  low
+}
+
+enum AlertStatus {
+  open
+  planned
+  dismissed
+}
+
+model Organization {
+  id        String     @id @default(cuid())
+  name      String
+  teams     Team[]
+  users     User[]
+  questions Question[]
+  createdAt DateTime   @default(now())
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  managerId String?  @unique
+  manager   User?    @relation("TeamManager", fields: [managerId], references: [id])
+  members   User[]   @relation("TeamMembers")
+  surveys   Survey[]
+  alerts    Alert[]
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id              String                 @id @default(cuid())
+  orgId           String
+  org             Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  teamId          String?
+  team            Team?                  @relation("TeamMembers", fields: [teamId], references: [id])
+  managedTeam     Team?                  @relation("TeamManager")
+  email           String                 @unique
+  name            String
+  role            Role                   @default(employee)
+  // Soft-delete: an inactive account can't sign in (see src/lib/auth.ts) and
+  // is excluded from participation counts — history/aggregates it already
+  // contributed to are left untouched.
+  active          Boolean                @default(true)
+  // Dev-only demo login (see src/lib/auth.ts). Never populate in production —
+  // production auth is delegated to Entra ID / Google via Auth.js.
+  demoPasswordHash String?
+  createdAt       DateTime               @default(now())
+  checkinReceipts CheckinReceipt[]
+  personalHistory PersonalHistoryEntry[]
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pillar      Pillar
+  type        QuestionType
+  text        String
+  category    String
+  lowLabel    String?
+  highLabel   String?
+  options     String[] @default([])
+  // { type: "choice" | "text", text: string, options?: string[] }
+  followUp    Json?
+  position    Int
+  active      Boolean      @default(true)
+  archivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  answers     Answer[]
+  alerts      Alert[]
+}
+
+model Survey {
+  id        String     @id @default(cuid())
+  teamId    String
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isoWeek   Int
+  year      Int
+  responses Response[]
+  createdAt DateTime   @default(now())
+
+  @@unique([teamId, isoWeek, year])
+}
+
+// A submitted questionnaire. When anonymous is true, userId is NULL and the
+// row carries no reversible link to an identity — see CheckinReceipt and
+// PersonalHistoryEntry for how weekly-dedup and "my history" work without it.
+model Response {
+  id         String   @id @default(cuid())
+  surveyId   String
+  survey     Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  teamId     String
+  userId     String?
+  anonymous  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  answers    Answer[]
+}
+
+model Answer {
+  id              String   @id @default(cuid())
+  responseId      String
+  response        Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question @relation(fields: [questionId], references: [id])
+  questionVersion Int      @default(1)
+  valueNumber     Int?
+  valueText       String?
+  isFollowUp      Boolean  @default(false)
+}
+
+// Tracks "one check-in per person per week" without exposing answer content —
+// created on every submission regardless of anonymity.
+model CheckinReceipt {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  isoWeek   Int
+  year      Int
+  createdAt DateTime @default(now())
+
+  @@unique([userId, isoWeek, year])
+}
+
+// Per-pillar score snapshot kept for the employee's own "Ton évolution" chart
+// only — never joined to Answer/Response, so it never lets a manager or admin
+// re-identify an anonymous answer. Flagged in the README as a DPO decision;
+// revisit before production launch.
+model PersonalHistoryEntry {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isoWeek Int
+  year    Int
+  pillar  Pillar
+  score   Float
+
+  @@unique([userId, isoWeek, year, pillar])
+}
+
+model Alert {
+  id         String      @id @default(cuid())
+  teamId     String
+  team       Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question    @relation(fields: [questionId], references: [id])
+  isoWeek    Int
+  year       Int
+  kind       AlertKind
+  status     AlertStatus @default(open)
+  createdAt  DateTime    @default(now())
+
+  @@unique([teamId, questionId, isoWeek, year])
+}
+
+// Passwordless "magic link" sign-in — used when the org has no managed SSO
+// (Entra ID / Google Workspace) and employees only have personal e-mail
+// addresses. Only the hash is stored; the raw token is emailed once and
+// never persisted. See src/lib/magicLink.ts.
+model LoginToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+}
