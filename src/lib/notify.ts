@@ -24,19 +24,22 @@ export async function notifyManagerOfAlert(params: {
 
   if (process.env.RESEND_API_KEY && managerEmail) {
     try {
-      await fetch("https://api.resend.com/emails", {
+      const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Pouls <pouls@notifications.entreprise.fr>",
+          from: process.env.RESEND_FROM_EMAIL ?? "Pouls <onboarding@resend.dev>",
           to: managerEmail,
           subject: `Pouls · ${teamName} — ${title}`,
           text: body,
         }),
       });
+      if (!res.ok) {
+        console.error(`notifyManagerOfAlert: Resend returned ${res.status}`, await res.text().catch(() => ""));
+      }
     } catch (err) {
       console.error("notifyManagerOfAlert: Resend failed", err);
     }

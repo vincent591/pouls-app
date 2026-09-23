@@ -40,7 +40,7 @@ export async function sendMagicLinkEmail(email: string, token: string) {
   const text = `Clique sur ce lien pour te connecter à Pouls (valable 15 minutes) :\n\n${url}\n\nSi tu n'es pas à l'origine de cette demande, ignore simplement cet e-mail.`;
 
   if (process.env.RESEND_API_KEY) {
-    await fetch("https://api.resend.com/emails", {
+    const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -53,6 +53,13 @@ export async function sendMagicLinkEmail(email: string, token: string) {
         text,
       }),
     });
+    if (!res.ok) {
+      // Don't throw: the caller (POST /api/auth/magic-link) always returns
+      // the same generic response regardless of send success, to avoid
+      // leaking which e-mails have an account — but a silent failure here
+      // would otherwise be invisible, so at least log it.
+      console.error(`sendMagicLinkEmail: Resend returned ${res.status}`, await res.text().catch(() => ""));
+    }
   } else {
     console.info(`[magic-link:dev] ${url}`);
   }

@@ -29,20 +29,24 @@ export async function GET(req: NextRequest) {
   for (const user of pending) {
     if (process.env.RESEND_API_KEY) {
       try {
-        await fetch("https://api.resend.com/emails", {
+        const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Pouls <pouls@notifications.entreprise.fr>",
+            from: process.env.RESEND_FROM_EMAIL ?? "Pouls <onboarding@resend.dev>",
             to: user.email,
             subject: "Ton check-in Pouls de la semaine t'attend",
             text: `Salut ${user.name.split(" ")[0]}, quelques minutes suffisent pour ton check-in bien-être, engagement, performance de la semaine.`,
           }),
         });
-        sent++;
+        if (res.ok) {
+          sent++;
+        } else {
+          console.error(`weekly-reminder: Resend returned ${res.status} for`, user.email, await res.text().catch(() => ""));
+        }
       } catch (err) {
         console.error("weekly-reminder: Resend failed for", user.email, err);
       }
